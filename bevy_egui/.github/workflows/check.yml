@@ -1,0 +1,127 @@
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+name: CI
+
+jobs:
+  fmt:
+    name: Formatter check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        features:
+          ["", "manage_clipboard", "open_url", "manage_clipboard,open_url"]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: clippy
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cache-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            cache-${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+            cache-${{ runner.os }}-cargo
+      - name: Install dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+      - run: cargo clippy --no-default-features --all-targets --features=${{ matrix.features }} -- -D warnings
+
+  clippy_wasm32:
+    name: Clippy check (wasm32)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features:
+          [
+            "immutable_ctx",
+            "manage_clipboard",
+            "open_url",
+            "manage_clipboard,open_url",
+          ]
+    env:
+      RUSTFLAGS: --cfg=web_sys_unstable_apis
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: clippy
+          targets: wasm32-unknown-unknown
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cache-wasm32-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            cache-wasm32-cargo-${{ hashFiles('**/Cargo.toml') }}
+            cache-wasm32-cargo
+      - run: cargo clippy --no-default-features --target=wasm32-unknown-unknown --all-targets --features=${{ matrix.features }} -- -D warnings
+
+  doc:
+    name: Check documentation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cache-doc-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            cache-doc-cargo-${{ hashFiles('**/Cargo.toml') }}
+            cache-doc-cargo
+      - run: cargo doc --all --features "bevy/x11"
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cache-test-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            cache-test-cargo-${{ hashFiles('**/Cargo.toml') }}
+            cache-test-cargo
+      - name: Install dependencies
+        run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
+      - run: cargo test --all
